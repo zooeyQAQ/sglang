@@ -76,6 +76,16 @@ class _ProbeState:
         self.o_bytes = torch.zeros((self.n_rows, MAX_O_BYTES), dtype=torch.uint8, device=device)
         self.meta = torch.zeros((self.n_rows, _NMETA), dtype=torch.int32, device=device)
         self.raw_scratch = torch.full((self.max_bs, self.max_k), -1, dtype=torch.int32, device=device)
+        self.i32_tmp = torch.zeros((1,), dtype=torch.int32, device=device)
+        self.raw_tmp = torch.full((1, self.max_k), -1, dtype=torch.int32, device=device)
+        self.page_tmp = torch.full((1, self.max_k), -1, dtype=torch.int32, device=device)
+        self.score_tmp = torch.zeros((1, MAX_SCORE), dtype=torch.float32, device=device)
+        self.q_tmp = torch.zeros((1, MAX_Q_BYTES), dtype=torch.uint8, device=device)
+        self.o_tmp = torch.zeros((1, MAX_O_BYTES), dtype=torch.uint8, device=device)
+        self.meta_tmp = torch.zeros((1, _NMETA), dtype=torch.int32, device=device)
+        self.o_n = torch.zeros((self.n_rows,), dtype=torch.int32, device=device)
+        self.q_n = torch.zeros((self.n_rows,), dtype=torch.int32, device=device)
+        self.attn_flag = torch.zeros((self.n_rows,), dtype=torch.int32, device=device)
         self.host_decode_steps = 0
         self.req_seq = 0
         self.dump_count = 0
@@ -89,6 +99,9 @@ class _ProbeState:
         self.o_bytes.zero_()
         self.meta.zero_()
         self.raw_scratch.fill_(-1)
+        self.o_n.zero_()
+        self.q_n.zero_()
+        self.attn_flag.zero_()
         self.host_decode_steps = 0
 
 
@@ -111,21 +124,26 @@ def _row_index(layer_index: int) -> torch.Tensor:
     return step * len(LAYERS) + int(layer_index)
 
 
-def _pad_i32(src: torch.Tensor, width: int, fill: int = -1) -> torch.Tensor:
+def _fill_i32_row(dst_1xk: torch.Tensor, src: torch.Tensor, fill: int = -1) -> None:
+    dst_1xk.fill_(fill)
     flat = src.reshape(-1).to(torch.int32)
-    out = flat.new_full((width,), fill)
-    n = min(flat.shape[0], width)
+    n = min(flat.shape[0], dst_1xk.shape[-1])
     if n:
-        out[:n].copy_(flat[:n])
-    return out
+        dst_1xk[0, :n].copy_(flat[:n])
 
 
-def _store_bytes(dst_row: torch.Tensor, src: torch.Tensor) -> int:
+def _fill_bytes(dst_1xn: torch.Tensor, src: torch.Tensor) -> int:
+    dst_1xn.zero_()
     view = src.contiguous().view(torch.uint8).reshape(-1)
-    n = min(view.shape[0], dst_row.shape[0])
+    n = min(view.shape[0], dst_1xn.shape[-1])
     if n:
-        dst_row[:n].copy_(view[:n])
+        dst_1xn[0, :n].copy_(view[:n])
     return n
+
+
+def _copy_i32_at(dst: torch.Tensor, row: torch.Tensor, value: int) -> None:
+    _state.i32_tmp[0] = int(value)
+    dst.index_copy_(0, row, _state.i32_tmp)
 
 
 def store_indexer(
@@ -147,42 +165,40 @@ def store_indexer(
     row = _row_index(li)
     raw_src = raw[0] if raw.dim() > 1 else raw
     page_src = page[0] if page.dim() > 1 else page
-    raw_row = _pad_i32(raw_src, _state.max_k).view(1, -1)
-    page_row = _pad_i32(page_src, _state.max_k).view(1, -1)
-    _state.raw.index_copy_(0, row, raw_row)
-    _state.page.index_copy_(0, row, page_row)
+    _fill_i32_row(_state.raw_tmp, raw_src)
+    _fill_i32_row(_state.page_tmp, page_src)
+    _state.raw.index_copy_(0, row, _state.raw_tmp)
+    _state.page.index_copy_(0, row, _state.page_tmp)
     score_width = 0
     if scores is not None:
         s = scores[0] if scores.dim() > 1 else scores
         s = s.reshape(-1).to(torch.float32)
-        srow = s.new_zeros((MAX_SCORE,))
+        _state.score_tmp.zero_()
         n = min(s.shape[0], MAX_SCORE)
         if n:
-            srow[:n].copy_(s[:n])
+            _state.score_tmp[0, :n].copy_(s[:n])
             score_width = n
-        _state.score.index_copy_(0, row, srow.view(1, -1))
+        _state.score.index_copy_(0, row, _state.score_tmp)
     q_nbytes = 0
     if layer_input is not None:
-        qrow = _state.q_bytes[0].new_zeros((MAX_Q_BYTES,))
-        q_nbytes = _store_bytes(qrow, layer_input)
-        _state.q_bytes.index_copy_(0, row, qrow.view(1, -1))
-    csl = compressed_seq_len
-    if isinstance(csl, torch.Tensor):
-        csl_i = csl.reshape(-1)[0].to(torch.int32)
+        q_nbytes = _fill_bytes(_state.q_tmp, layer_input)
+        _state.q_bytes.index_copy_(0, row, _state.q_tmp)
+        _copy_i32_at(_state.q_n, row, q_nbytes)
+    _state.meta_tmp.zero_()
+    _state.meta_tmp[0, 0] = int(layer_id)
+    _state.meta_tmp[0, 1] = int(compress_ratio)
+    if isinstance(compressed_seq_len, torch.Tensor):
+        _state.meta_tmp[0, 2] = compressed_seq_len.reshape(-1)[0].to(torch.int32)
     else:
-        csl_i = torch.tensor(int(csl), dtype=torch.int32, device=_state.device)
-    mrow = _state.meta.new_zeros((1, _NMETA))
-    mrow[0, 0] = int(layer_id)
-    mrow[0, 1] = int(compress_ratio)
-    mrow[0, 2] = csl_i
-    mrow[0, 3] = int(topk_length)
-    mrow[0, 4] = 1 if use_topk_v2 else 0
-    mrow[0, 5] = int(dispatch_id)
-    mrow[0, 7] = score_width
-    mrow[0, 8] = q_nbytes
-    mrow[0, 10] = _state.max_k
-    mrow[0, 11] = 1
-    _state.meta.index_copy_(0, row, mrow)
+        _state.meta_tmp[0, 2] = int(compressed_seq_len)
+    _state.meta_tmp[0, 3] = int(topk_length)
+    _state.meta_tmp[0, 4] = 1 if use_topk_v2 else 0
+    _state.meta_tmp[0, 5] = int(dispatch_id)
+    _state.meta_tmp[0, 7] = int(score_width)
+    _state.meta_tmp[0, 8] = int(q_nbytes)
+    _state.meta_tmp[0, 10] = int(_state.max_k)
+    _state.meta_tmp[0, 11] = 1
+    _state.meta.index_copy_(0, row, _state.meta_tmp)
 
 
 def store_attn(
@@ -198,20 +214,17 @@ def store_attn(
     row = _row_index(li)
     if extra_indices is not None:
         page_src = extra_indices.reshape(-1, extra_indices.shape[-1])[0]
-        page_row = _pad_i32(page_src, _state.max_k).view(1, -1)
-        _state.page.index_copy_(0, row, page_row)
+        _fill_i32_row(_state.page_tmp, page_src)
+        _state.page.index_copy_(0, row, _state.page_tmp)
     if o is not None:
-        orow = _state.o_bytes[0].new_zeros((MAX_O_BYTES,))
-        o_nbytes = _store_bytes(orow, o)
-        _state.o_bytes.index_copy_(0, row, orow.view(1, -1))
-        _state.meta[row, 9] = o_nbytes
+        o_nbytes = _fill_bytes(_state.o_tmp, o)
+        _state.o_bytes.index_copy_(0, row, _state.o_tmp)
+        _copy_i32_at(_state.o_n, row, o_nbytes)
     if q is not None:
-        qrow = _state.q_bytes[0].new_zeros((MAX_Q_BYTES,))
-        q_nbytes = _store_bytes(qrow, q)
-        _state.q_bytes.index_copy_(0, row, qrow.view(1, -1))
-        _state.meta[row, 8] = q_nbytes
-    _state.meta[row, 0] = int(layer_id)
-    _state.meta[row, 11] = _state.meta[row, 11] | 2
+        q_nbytes = _fill_bytes(_state.q_tmp, q)
+        _state.q_bytes.index_copy_(0, row, _state.q_tmp)
+        _copy_i32_at(_state.q_n, row, q_nbytes)
+    _copy_i32_at(_state.attn_flag, row, 2)
     if li == len(LAYERS) - 1:
         _state.slot.add_(1)
 
@@ -316,6 +329,9 @@ def _dump_request(forward_batch) -> None:
     q_bytes = _state.q_bytes[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS), -1)
     o_bytes = _state.o_bytes[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS), -1)
     meta = _state.meta[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS), -1)
+    o_n_arr = _state.o_n[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS))
+    q_n_arr = _state.q_n[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS))
+    attn_flag = _state.attn_flag[:n_rows].detach().cpu().numpy().reshape(n_steps, len(LAYERS))
     rid = None
     reqs = getattr(forward_batch, "reqs", None)
     if reqs:
@@ -330,7 +346,7 @@ def _dump_request(forward_batch) -> None:
     for step in range(n_steps):
         for li, layer_id in enumerate(LAYERS):
             m = meta[step, li].astype(np.int32, copy=False)
-            flags = int(m[11])
+            flags = int(m[11]) | int(attn_flag[step, li])
             if flags == 0:
                 continue
             topk_length = int(m[3]) or _state.max_k
@@ -346,8 +362,8 @@ def _dump_request(forward_batch) -> None:
                 score_h = _tensor_hash_cpu(score[step, li, :use_n])
             else:
                 score_h = None
-            q_n = int(m[8])
-            o_n = int(m[9])
+            q_n = int(q_n_arr[step, li] or m[8])
+            o_n = int(o_n_arr[step, li] or m[9])
             layer_in_h = _sha256_bytes(bytes(q_bytes[step, li, :q_n].tobytes())) if q_n else None
             sparse_h = _sha256_bytes(bytes(o_bytes[step, li, :o_n].tobytes())) if o_n else None
             raw_valid = raw[step, li][:topk_length]
