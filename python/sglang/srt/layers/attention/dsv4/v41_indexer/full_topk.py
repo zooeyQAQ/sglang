@@ -103,7 +103,8 @@ class FullTopKIndexer:
                     metadata.max_compressed_seq_len,
                 )
                 # TODO(dark): add bf16 topk
-                raw_buf = c1_order_probe.raw_scratch()
+                raw_all = c1_order_probe.raw_scratch()
+                raw_buf = None if raw_all is None else raw_all[: logits.shape[0]]
                 topk_transform_paged_from_metadata(
                     logits,
                     metadata,
@@ -139,7 +140,8 @@ class FullTopKIndexer:
             metadata.max_compressed_seq_len,
         )
         # TODO(dark): add bf16 topk
-        raw_buf = c1_order_probe.raw_scratch()
+        raw_all = c1_order_probe.raw_scratch()
+        raw_buf = None if raw_all is None else raw_all[: logits.shape[0]]
         topk_transform_paged_from_metadata(
             logits, metadata, inputs.out_page_indices, raw_buf
         )
