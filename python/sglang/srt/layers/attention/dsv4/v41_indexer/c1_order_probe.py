@@ -67,6 +67,8 @@ class _ProbeState:
         n_layers = len(LAYERS)
         self.n_rows = n_steps * n_layers
         self.slot = torch.zeros((1,), dtype=torch.int64, device=device)
+        self.cap = torch.tensor([MAX_DECODE_STEPS - 1], dtype=torch.int64, device=device)
+        self.layer_offsets = torch.arange(len(LAYERS), dtype=torch.int64, device=device)
         self.raw = torch.full((self.n_rows, self.max_k), -1, dtype=torch.int32, device=device)
         self.page = torch.full((self.n_rows, self.max_k), -1, dtype=torch.int32, device=device)
         self.score = torch.zeros((self.n_rows, MAX_SCORE), dtype=torch.float32, device=device)
@@ -105,9 +107,8 @@ def raw_scratch() -> Optional[torch.Tensor]:
 
 
 def _row_index(layer_index: int) -> torch.Tensor:
-    cap = _state.slot.new_tensor(MAX_DECODE_STEPS - 1)
-    step = torch.minimum(_state.slot, cap)
-    return step * len(LAYERS) + layer_index
+    step = torch.minimum(_state.slot, _state.cap)
+    return step * len(LAYERS) + int(layer_index)
 
 
 def _pad_i32(src: torch.Tensor, width: int, fill: int = -1) -> torch.Tensor:
