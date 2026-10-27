@@ -1,0 +1,71 @@
+task_id: TASK-C1-ORDER-0005
+route: C1-ORDER
+experiment_id: EXP-0005
+status: planned
+protocol_version: "0.5"
+
+objective: >
+  On real C1/C2 operator inputs, attribute sparse_out permutation
+  sensitivity to BF16 split-K partial rounding, blocked FP8 PV
+  quantization, or layout/mask/sync defects. First round: same-input
+  comparison of production FlashInfer, existing Torch FP32 fallback
+  (_sm120_sparse_decode_fwd, TF32 off, FP32 before final BF16 cast),
+  and an independent FP64 reference. Implement V1 CUDA only after the
+  production path shows extra error versus those references.
+
+hypothesis: >
+  Production FlashInfer decode writes BF16 split-K partials
+  (mid_out) and uses blocked FP8 PV. The Torch fallback already
+  computes QK/softmax/PV in FP32 after dequant. An independent FP64
+  oracle on the same quantized cache should bound the extra production
+  error. If FlashInfer's extra error versus FP64 is large compared
+  with Torch FP32 versus FP64, later V1 (FP32 partial) is justified.
+
+procedure:
+  - Freeze from labbook plan.md (94223971cf). Do not change Top-K,
+    do not add production canonical sort, do not overwrite the
+    installed FlashInfer package.
+  - Stage 0: record SHA, import paths, FlashInfer 0.7.1 module
+    identity, mid_out dtype, GPU.
+  - Stage 1: reuse EXP-0025 C1 traces if they bitwise-restore on
+    this module; EXP-0004 records.jsonl is hashes-only. Recapture
+    current C1/C2 only if historical replay is not faithful or C2
+    is required and missing.
+  - First-round numerical: same inputs through (1) production
+    FlashInfer flash_mla_with_kvcache_sm120, (2) _sm120_sparse_decode_fwd
+    with TF32 disabled and FP32 output kept before .to(bf16),
+    (3) independent CPU/GPU FP64 decode+attention. Report E_ref,
+    S_order, max_abs, bitwise equality to production sparse_out.
+  - V1/V2/V3 CUDA: not_run until production extra error is confirmed.
+  - Do not start GSM8K or a fused-sort PR.
+
+acceptance:
+  type: profiling
+  correctness:
+    required: true
+    criteria:
+      - Stage 0 identity recorded
+      - historical C1 replay classified faithful or historical_replay_mismatch
+      - FP64 oracle self-checks recorded
+      - FlashInfer vs Torch FP32 vs FP64 same-input metrics recorded
+  stability:
+    required: true
+    criteria:
+      - no device assert
+      - fixed-order FlashInfer repeats bitwise stable when replayed
+  reproducibility:
+    required: true
+    criteria:
+      - exact commit recorded
+      - fixture identity recorded
+      - FlashInfer module path recorded
+  experiment_specific:
+    - V1 CUDA is not_run in this first round unless production extra error is confirmed and a follow-up in the same EXP is explicitly opened
+    - N8193/C2 capture is not claimed complete if not run
+    - extra production error is not attributed to PV by exclusion
+
+stop_conditions:
+  - GPU occupied by a foreign process
+  - device assert or OOM
+  - identity_or_dispatch_unresolved
+  - replay_not_faithful without recapture authorization for a new SHA

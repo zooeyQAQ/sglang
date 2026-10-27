@@ -1,0 +1,14 @@
+{
+  "run_dir": "/data/sgl_pr/runs/C1-ORDER/EXP-0005",
+  "identity": "identity.json",
+  "faithful_replay": "replay/faithful_replay.json",
+  "oracle_selftest": "reference/oracle_selftest.json",
+  "first_round_metrics": "metrics/first_round.json",
+  "historical_c1": [
+    "fixtures/historical_c1/ml-pro5000-ser237.qgz02_tp5_dp5_req0000_steps3.pt",
+    "fixtures/historical_c1/ml-pro5000-ser237.qgz02_tp5_dp5_req0002_steps3.pt"
+  ],
+  "scripts": ["scripts/compare_refs.py"],
+  "v1_cuda": "not_run",
+  "current_c2_capture": "not_run"
+}

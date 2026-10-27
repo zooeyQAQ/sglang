@@ -1,0 +1,9 @@
+{
+  "m_valid": 640,
+  "q0_nosink_max_abs": 4.218847493575595e-15,
+  "q0_nosink_rel_l2": 8.034558531954684e-16,
+  "q0_sink0_max_abs": 4.9960036108132044e-15,
+  "q0_sink0_rel_l2": 1.086171739155233e-15,
+  "padding_max_abs": 0.0,
+  "pass_1e9": true
+}

@@ -6,3 +6,4 @@
 | EXP-0002 | fail | 6ae2f5c2ef | EXP-0001 | N511 9 output_ids; fork site unmeasured |
 | EXP-0003 | pass | 1a71ff57bf | EXP-0002 | N511 L20 same set/score, different order and sparse_out; N8193 not observed (OOM) |
 | EXP-0004 | pass | 54e84fa9f3 | EXP-0003 | TP8 no DP, Engram host table; N511 L20 order fork reproduced; N8193 L2 C2 order fork observed |
+| EXP-0005 | pass | 54e84fa9f3 | EXP-0004 | historical C1 replay faithful; FlashInfer S_order 0.0078125 vs Torch FP32-BF16 0.001953 vs FP64 0; V1 CUDA not_run |

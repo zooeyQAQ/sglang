@@ -1,0 +1,38 @@
+{
+  "a_fill_00": {
+    "exact_equal": true,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "nonfinite": 0,
+    "sha256": "55011f0f12c32fd2883e5e5b46a7a94dd9fc486d89acb8faeb245325edead308",
+    "ref_sha256": "55011f0f12c32fd2883e5e5b46a7a94dd9fc486d89acb8faeb245325edead308"
+  },
+  "b_fill_00": {
+    "exact_equal": true,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "nonfinite": 0,
+    "sha256": "610e5df836d3c0e8de0db47f303e3a02e86af7882b024dbc5026edc41ae3d95f",
+    "ref_sha256": "610e5df836d3c0e8de0db47f303e3a02e86af7882b024dbc5026edc41ae3d95f"
+  },
+  "a_fill_a5": {
+    "exact_equal": true,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "nonfinite": 0,
+    "sha256": "55011f0f12c32fd2883e5e5b46a7a94dd9fc486d89acb8faeb245325edead308",
+    "ref_sha256": "55011f0f12c32fd2883e5e5b46a7a94dd9fc486d89acb8faeb245325edead308"
+  },
+  "b_fill_a5": {
+    "exact_equal": true,
+    "max_abs": 0.0,
+    "mean_abs": 0.0,
+    "rel_l2": 0.0,
+    "nonfinite": 0,
+    "sha256": "610e5df836d3c0e8de0db47f303e3a02e86af7882b024dbc5026edc41ae3d95f",
+    "ref_sha256": "610e5df836d3c0e8de0db47f303e3a02e86af7882b024dbc5026edc41ae3d95f"
+  }
+}

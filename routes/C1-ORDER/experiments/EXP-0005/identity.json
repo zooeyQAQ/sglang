@@ -1,0 +1,24 @@
+{
+  "at": "2026-10-27T09:44:28.300429+00:00",
+  "commit": "54e84fa9f38fbea162af599222370961a1d2c7d7",
+  "python": "/opt/sglang/bin/python3",
+  "torch": "2.14.1+cu130",
+  "cuda": "13.0",
+  "device": "NVIDIA RTX PRO 5000 72GB Blackwell",
+  "capability": [
+    12,
+    0
+  ],
+  "flash_mla_sm120": "/data/sgl_pr/worktrees/c1-index-order/python/sglang/kernels/ops/attention/flash_mla_sm120.py",
+  "backend": "flashinfer",
+  "flashinfer": "/opt/sglang/lib/python3.12/site-packages/flashinfer/__init__.py",
+  "flashinfer_version": "0.7.1",
+  "sparse_mla_mod": "/opt/sglang/lib/python3.12/site-packages/flashinfer/mla/_sparse_mla_sm120/__init__.py",
+  "decode_max_tokens": 64,
+  "dsv4_dispatch": "_DecodeDispatchEnvelope(num_heads<=128, topk>=1)",
+  "tf32_matmul": false,
+  "mid_out_documented": "bf16 producer and merge.cuh const bf16*",
+  "merge_cuh": "/opt/sglang/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/attention/sparse_mla_sm120/execution/merge.cuh",
+  "decode_cuh": "/opt/sglang/lib/python3.12/site-packages/flashinfer/data/include/flashinfer/attention/sparse_mla_sm120/kernels/fp8_decode/decode.cuh",
+  "cuda_visible_devices": "0"
+}
