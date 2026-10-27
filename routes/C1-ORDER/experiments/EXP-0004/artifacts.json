@@ -1,0 +1,15 @@
+{
+  "run_dir": "/data/sgl_pr/runs/C1-ORDER/EXP-0004",
+  "log": "logs/serve.log",
+  "mf075_kv_refuse_log": "logs/serve.mf075-kv-refuse.log",
+  "mf088_swa_refuse_log": "logs/serve.mf088-swa-refuse.log",
+  "mf092_stopped_log": "logs/serve.mf092-stopped-by-user.log",
+  "probe": "probe/records.jsonl",
+  "probe_requests": "probe/requests.jsonl",
+  "harvest_ticks": "probe/harvest_tick.jsonl",
+  "http_requests": "requests.jsonl",
+  "analysis": "analysis.json",
+  "launch": "launch_argv.txt",
+  "inputs": ["inputs/n511.json", "inputs/n8193.json"],
+  "scripts": ["scripts/serve_d.sh", "scripts/run_matrix.py", "scripts/analyze.py", "scripts/stop_serve.sh"]
+}

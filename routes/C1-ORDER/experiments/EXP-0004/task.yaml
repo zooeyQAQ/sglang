@@ -1,0 +1,72 @@
+task_id: TASK-C1-ORDER-0004
+route: C1-ORDER
+experiment_id: EXP-0004
+status: planned
+protocol_version: "0.5"
+
+objective: >
+  On the EXP-0003 probe tree (v0.5.22 + PR #42371), rerun the N511 × N8193
+  × L2/L8/L14/L20 index-order matrix without DP attention: TP8 only, lower
+  mem-fraction-static, and test whether the N511 L20 same-score same-set
+  different-order finding plus N8193 C2-above-K reproduce.
+
+hypothesis: >
+  EXP-0003 N511 L20 order fork is not an artifact of DP8 attn_tp=1. The same
+  same-score same-set different-order pattern should appear on TP8 DP1.
+  N8193 OOM on mf=0.97 was FlashMLA prefill temp at 64 local heads; TP8
+  (8 local heads) plus lower mf should let C2 sources run above K=512.
+
+procedure:
+  - Keep EXP-0003 probe contract: layers L2/L8/L14/L20, SHA-256 packed
+    int32 (raw, physical) order vs lex-sorted set hashes, CUDA-graph D2D
+    ring, D2H after each request, no fused sort, no SM120 kernel change.
+  - Change only the authorized launch delta: drop --dp-size 8
+    --enable-dp-attention --enable-dp-lm-head; keep --tp-size 8 --ep-size 4;
+    set --mem-fraction-static 0.75 (bump only if KV refuses before load).
+  - Harvest on tp_rank==0 because attn_dp_size==1. Do not send routed_dp_rank.
+  - Cheap matrix only: N511 and N8193 on source layers L2/L8/L14/L20.
+  - N511: up to 30 serial requests until at least one token-4=15 and one
+    token-4=32 pair exists, or 30 requests if that pair does not appear.
+  - N8193: up to 10 serial requests; stop as soon as any C2 layer shows
+    same score hash, same set hash, different order hash.
+  - Require cached_tokens=0. Record meta_info.dp_rank (expected 0).
+  - If N8193 C2 shows an order fork, add C2 causal AA/AB/BA/BB replay.
+    Otherwise skip full-layer trace.
+
+acceptance:
+  type: profiling
+  correctness:
+    required: true
+    criteria:
+      - no unexpected crash
+      - HTTP 200 on recorded requests
+      - cached_tokens is 0
+  stability:
+    required: true
+    criteria:
+      - no OOM
+      - no assertion failure
+  reproducibility:
+    required: true
+    criteria:
+      - exact commit recorded
+      - workload recorded
+      - launch config recorded
+  measurement_quality:
+    required: true
+    criteria:
+      - probe records exist for L2/L8/L14/L20 on decode steps
+      - hashes are SHA-256 of packed pairs
+  experiment_specific:
+    - N511 matrix classifies whether L20 order/set hashes move
+    - N8193 C2 order fork is reported as observed or not observed; never as C2 cannot happen
+    - selected-set hash diffs are classified separately from order diffs
+    - score hash diffs are classified as pre-Top-K and not attributed to output permutation
+    - compare against EXP-0003 N511 L20 same-score same-set different-order
+
+stop_conditions:
+  - GPU occupied by a foreign process
+  - serve dies or health is not 200
+  - fused sort or SM120 attention kernel is changed
+  - N8193 C2 same-score same-set different-order pair found (stop further N8193 requests)
+  - N511 reached 30 requests or the 15/32 token-4 pair is in hand
