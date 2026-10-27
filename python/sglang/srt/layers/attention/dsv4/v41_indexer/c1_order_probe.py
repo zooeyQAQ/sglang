@@ -255,8 +255,29 @@ def _pair_hashes(raw: np.ndarray, page: np.ndarray, topk_length: int) -> tuple[s
     return order_h, set_h, r.tolist(), p.tolist()
 
 
+def _harvest_ranks() -> tuple[int, int, int]:
+    """Return (attn_dp_rank, attn_dp_size, tp_rank). Missing attrs become -1/1/-1."""
+    try:
+        from sglang.srt.runtime_context import get_parallel
+
+        ps = get_parallel()
+        dp = int(getattr(ps, "attn_dp_rank", getattr(ps, "dp_rank", -1)))
+        dp_size = int(getattr(ps, "attn_dp_size", getattr(ps, "dp_size", 1)))
+        tp = int(getattr(ps, "tp_rank", -1))
+        return dp, dp_size, tp
+    except Exception:
+        return -1, 1, -1
+
+
+def _should_harvest_rank(dp: int, dp_size: int, tp: int) -> bool:
+    """Single-rank harvest. DP>1 dumps attn_dp_rank==5; DP1 dumps tp_rank==0."""
+    if dp_size > 1:
+        return dp == 5
+    return tp == 0
+
+
 def harvest_after_decode(forward_batch) -> None:
-    """Host-side: count real DECODE replays on DP5; D2H after 15 steps."""
+    """Host-side: count real DECODE replays on the harvest rank; D2H after 15 steps."""
     if _state is None:
         return
     mode = getattr(forward_batch, "forward_mode", None)
@@ -274,14 +295,8 @@ def harvest_after_decode(forward_batch) -> None:
     raw_bs = int(raw_bs or 0)
     if raw_bs <= 0 and bs <= 0:
         return
-    try:
-        from sglang.srt.runtime_context import get_parallel
-
-        ps = get_parallel()
-        dp = int(getattr(ps, "attn_dp_rank", getattr(ps, "dp_rank", -1)))
-    except Exception:
-        dp = -1
-    if dp != 5:
+    dp, dp_size, tp = _harvest_ranks()
+    if not _should_harvest_rank(dp, dp_size, tp):
         return
     _state.host_decode_steps += 1
     d = probe_dir()
@@ -296,6 +311,8 @@ def harvest_after_decode(forward_batch) -> None:
                             "bs": bs,
                             "raw_bs": raw_bs,
                             "dp": dp,
+                            "dp_size": dp_size,
+                            "tp": tp,
                             "rid": getattr(getattr(forward_batch, "reqs", [None])[0], "rid", None)
                             if getattr(forward_batch, "reqs", None)
                             else None,
@@ -393,13 +410,16 @@ def _dump_request(forward_batch) -> None:
     with rec_path.open("a") as fh:
         for rec in rows:
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
+    dp, dp_size, tp = _harvest_ranks()
     summary = {
         "req_seq": _state.req_seq,
         "rid": rid,
         "n_steps": n_steps,
         "n_records": len(rows),
         "at": datetime.now(timezone.utc).isoformat(),
-        "dp_rank": 5,
+        "dp_rank": dp,
+        "attn_dp_size": dp_size,
+        "tp_rank": tp,
     }
     with (out_dir / "requests.jsonl").open("a") as fh:
         fh.write(json.dumps(summary) + "\n")
