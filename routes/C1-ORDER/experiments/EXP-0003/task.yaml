@@ -1,0 +1,69 @@
+task_id: TASK-C1-ORDER-0003
+route: C1-ORDER
+experiment_id: EXP-0003
+status: planned
+protocol_version: "0.5"
+
+objective: >
+  On the EXP-0002 tree (v0.5.22 + PR #42371), measure whether N511 token
+  forking is a ratio-1 / K=512 boundary effect at L20, and whether ratio-2
+  sources at L2/L8/L14 also emit an unstable Top-K order once their effective
+  length exceeds K at N8193.
+
+hypothesis: >
+  Around N=511, L20 C1 length reaches the K=512 boundary while L2/L8/L14 C2
+  stay near N/2 and below K, so order instability is first exposed at L20.
+  Ratio-2 layers are not assumed immune; N8193 must exercise them above K.
+  In the candidate-enabled configuration L20 is also the candidate source,
+  so the trace distinguishes the ratio-1 boundary effect from candidate
+  publish/consume.
+
+procedure:
+  - Keep EXP-0002 tree, env, DP5, CUDA graph, and launch argv unchanged aside from SGLANG_C1_ORDER_PROBE_DIR.
+  - Do not add a sort fix or change the SM120 attention kernel.
+  - Cheap matrix only: N511 and N8193 on source layers L2/L8/L14/L20. No full 40-layer tensor dump.
+  - Each layer, each decode step, record layer_id, compress_ratio, compressed_seq_len, topk_length, actual dispatch, metadata.use_topk_v2, layer_input hash, score/logits hash, selected-set hash, emitted-order hash, raw indices, physical page indices, sparse_out hash.
+  - order_hash = sha256 of (raw_index, physical_slot) in emitted order as packed little-endian int32 pairs. set_hash = sha256 of the same pairs after sorting. Exclude -1 padding by topk_length. No sum/XOR hashes.
+  - Graph path: D2D into a preallocated ring; D2H and hashing after each request.
+  - N511: up to 30 serial requests until at least one token-4=15 and one token-4=32 pair exists.
+  - N8193: up to 10 serial requests; stop as soon as any C2 layer shows same score hash, same set hash, different order hash.
+  - Pin routed_dp_rank=5, require cached_tokens=0.
+  - If N8193 C2 shows an order fork, add C2 causal AA/AB/BA/BB replay. Otherwise skip full-layer trace.
+
+acceptance:
+  type: profiling
+  correctness:
+    required: true
+    criteria:
+      - no unexpected crash
+      - HTTP 200 on recorded requests
+      - meta_info.dp_rank is 5
+      - cached_tokens is 0
+  stability:
+    required: true
+    criteria:
+      - no OOM
+      - no assertion failure
+  reproducibility:
+    required: true
+    criteria:
+      - exact commit recorded
+      - workload recorded
+      - launch config recorded
+  measurement_quality:
+    required: true
+    criteria:
+      - probe records exist for L2/L8/L14/L20 on decode steps
+      - hashes are SHA-256 of packed pairs
+  experiment_specific:
+    - N511 matrix classifies whether only L20 order/set hashes move
+    - N8193 C2 order fork is reported as observed or not observed; never as C2 cannot happen
+    - selected-set hash diffs are classified separately from order diffs
+    - score hash diffs are classified as pre-Top-K and not attributed to output permutation
+
+stop_conditions:
+  - GPU occupied by a foreign process
+  - serve dies or health is not 200
+  - launch argv or env differs from EXP-0002 besides SGLANG_C1_ORDER_PROBE_DIR
+  - N8193 C2 same-score same-set different-order pair found (stop further N8193 requests)
+  - N511 reached 30 requests or the 15/32 token-4 pair is in hand

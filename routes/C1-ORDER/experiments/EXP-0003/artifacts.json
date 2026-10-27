@@ -1,0 +1,10 @@
+{
+  "run_dir": "/data/sgl_pr/runs/C1-ORDER/EXP-0003",
+  "log": "logs/serve.log",
+  "probe": "probe/records.jsonl",
+  "probe_requests": "probe/requests.jsonl",
+  "http_requests": "requests.jsonl",
+  "launch": "launch_argv.txt",
+  "inputs": ["inputs/n511.json", "inputs/n8193.json"],
+  "scripts": ["scripts/serve_d.sh", "scripts/run_matrix.py", "scripts/run_n8193.py"]
+}
