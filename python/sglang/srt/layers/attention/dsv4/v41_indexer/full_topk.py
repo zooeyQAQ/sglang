@@ -29,6 +29,7 @@ from .types import (
     DecodeInputs,
     PrefillInputs,
 )
+from . import c1_order_probe
 
 if TYPE_CHECKING:
     from sglang.srt.mem_cache.deepseek_v4_memory_pool import DeepSeekV4TokenToKVPool
@@ -102,14 +103,30 @@ class FullTopKIndexer:
                     metadata.max_compressed_seq_len,
                 )
                 # TODO(dark): add bf16 topk
+                raw_buf = c1_order_probe.raw_scratch()
                 topk_transform_paged_from_metadata(
                     logits,
                     metadata,
                     inputs.out_page_indices,
+                    raw_buf,
                     rows=rows,
                     topk_metadata=(
                         topk_plans[chunk_idx] if topk_plans is not None else None
                     ),
+                )
+            raw_buf = c1_order_probe.raw_scratch()
+            if c1_order_probe.active() and raw_buf is not None:
+                c1_order_probe.store_indexer(
+                    layer_id=inputs.layer_id,
+                    compress_ratio=inputs.compress_ratio,
+                    compressed_seq_len=metadata.compressed_seq_lens,
+                    topk_length=inputs.out_page_indices.shape[-1],
+                    use_topk_v2=bool(metadata.use_topk_v2),
+                    dispatch_id=c1_order_probe.DISPATCH_FULL_TOPK_DEEPGEMM,
+                    raw=raw_buf,
+                    page=inputs.out_page_indices,
+                    scores=None,
+                    layer_input=inputs.x,
                 )
             return
         logits = deep_gemm_fp4_paged_mqa_logits(
@@ -122,9 +139,23 @@ class FullTopKIndexer:
             metadata.max_compressed_seq_len,
         )
         # TODO(dark): add bf16 topk
+        raw_buf = c1_order_probe.raw_scratch()
         topk_transform_paged_from_metadata(
-            logits, metadata, inputs.out_page_indices, None
+            logits, metadata, inputs.out_page_indices, raw_buf
         )
+        if c1_order_probe.active() and raw_buf is not None:
+            c1_order_probe.store_indexer(
+                layer_id=inputs.layer_id,
+                compress_ratio=inputs.compress_ratio,
+                compressed_seq_len=metadata.compressed_seq_lens,
+                topk_length=inputs.out_page_indices.shape[-1],
+                use_topk_v2=bool(metadata.use_topk_v2),
+                dispatch_id=c1_order_probe.DISPATCH_FULL_TOPK_DEEPGEMM,
+                raw=raw_buf,
+                page=inputs.out_page_indices,
+                scores=logits,
+                layer_input=inputs.x,
+            )
 
     def _torch_decode(self, inputs: DecodeInputs) -> None:
         d = decode_scores(

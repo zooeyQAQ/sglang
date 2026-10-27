@@ -1676,6 +1676,18 @@ class DecodeCudaGraphRunner(BaseCudaGraphRunner):
 
     def _process_output_after_replay(self, output, forward_batch: ForwardBatch):
         """Optional eager tail executed after graph replay and inside its timer."""
+        try:
+            from sglang.srt.layers.attention.dsv4.v41_indexer import c1_order_probe
+
+            c1_order_probe.harvest_after_decode(forward_batch)
+        except Exception as exc:
+            try:
+                d = c1_order_probe.probe_dir()
+                if d:
+                    with open(d + "/harvest_error.txt", "a") as fh:
+                        fh.write(repr(exc) + "\n")
+            except Exception:
+                pass
         return output
 
     def get_spec_info(self, num_tokens: int):

@@ -25,6 +25,7 @@ from sglang.srt.runtime_context import get_platform
 from sglang.srt.utils.common import async_h2d
 
 from .types import DecodeInputs, PrefillInputs
+from . import c1_order_probe
 
 if TYPE_CHECKING:
     from sglang.srt.layers.attention.dsv4.dsv41_sparse import DeepseekV41Indexer
@@ -458,8 +459,34 @@ def select_decode(
             d.ratio,
             d.has_candidate_mask,
         )
+        if c1_order_probe.active():
+            c1_order_probe.store_indexer(
+                layer_id=inputs.layer_id,
+                compress_ratio=d.ratio,
+                compressed_seq_len=d.lens,
+                topk_length=k,
+                use_topk_v2=True,
+                dispatch_id=c1_order_probe.DISPATCH_SELECT_PAGED_V2_FINISH,
+                raw=idx,
+                page=inputs.out_page_indices,
+                scores=d.scores,
+                layer_input=inputs.x,
+            )
     else:
         write_decode(inputs, d, d.scores.topk(k, dim=-1, sorted=False).indices)
+        if c1_order_probe.active():
+            c1_order_probe.store_indexer(
+                layer_id=inputs.layer_id,
+                compress_ratio=d.ratio,
+                compressed_seq_len=d.lens,
+                topk_length=k,
+                use_topk_v2=False,
+                dispatch_id=c1_order_probe.DISPATCH_WRITE_DECODE,
+                raw=d.scores.topk(k, dim=-1, sorted=False).indices,
+                page=inputs.out_page_indices,
+                scores=d.scores,
+                layer_input=inputs.x,
+            )
 
 
 def write_decode(inputs: DecodeInputs, d: DecodeScores, idx: torch.Tensor) -> None:

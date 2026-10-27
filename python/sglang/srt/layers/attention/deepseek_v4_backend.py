@@ -2918,6 +2918,13 @@ class DeepseekV4AttnBackend(
             device=self.device,
             is_read=False,
         )
+        from sglang.srt.layers.attention.dsv4.v41_indexer import c1_order_probe
+
+        c1_order_probe.maybe_init(
+            device=self.device,
+            max_bs=max_bs,
+            max_k=int(getattr(self, "index_topk", 512) or 512),
+        )
 
     @property
     def verify_mask(self) -> Optional[VerifyMask]:
@@ -2966,6 +2973,9 @@ class DeepseekV4AttnBackend(
         current_raw = getattr(self, "_current_capture_raw", None)
         if current_raw is not None:
             self.forward_metadata = current_raw
+        from sglang.srt.layers.attention.dsv4.v41_indexer import c1_order_probe
+
+        c1_order_probe.reset_after_warmup()
 
     # ---- DeepSeek V4.1 ratio 1/2 compressor and indexer, torch bring-up path ----
 
@@ -3841,6 +3851,15 @@ class DeepseekV4AttnBackend(
                 )[0]
 
             o = o.squeeze(1)
+            from sglang.srt.layers.attention.dsv4.v41_indexer import c1_order_probe
+
+            if c1_order_probe.active() and layer_id in c1_order_probe.LAYERS:
+                c1_order_probe.store_attn(
+                    layer_id=layer_id,
+                    q=q,
+                    o=o,
+                    extra_indices=extra_indices,
+                )
             return o
 
         raise NotImplementedError("ragged attention")
