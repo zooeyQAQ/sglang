@@ -62,7 +62,12 @@ DEEPGEMM_NEED_TMA_ALIGNED_SCALES = not (DEEPGEMM_SCALE_UE8M0 or _is_musa)
 
 
 def _supports_paged_sparse_mqa_logits() -> bool:
-    if not DEEPGEMM_BLACKWELL:
+    # SM100 uses Blackwell TMEM kernels (DEEPGEMM_BLACKWELL). SM120/121 expose
+    # the same Python APIs (DeepGEMM#324) even though is_sm100 is false; DSV4
+    # candidate indexer treats SM120 as sm100_or_newer and needs this flag.
+    if not ENABLE_JIT_DEEPGEMM:
+        return False
+    if not (DEEPGEMM_BLACKWELL or get_device_sm() in (120, 121)):
         return False
     import deep_gemm
 
