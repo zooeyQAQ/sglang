@@ -8,18 +8,18 @@
 
 ## 当前结论
 
-尚无正式性能结论。EXP-0001 直接采集原生基线计时与 profiling，按用户指示不先开展单独可行性实验。
+EXP-0001 **invalid**。冻结 `mem_fraction_static=0.80` 在该 SHA 原生 Engram GPU placement 下无法为 KV 留出空间（运行时 min viable 0.8731）。未改 mf、未开 host table，无计时与 profiler 证据。
 
 ## 未解决问题
 
-实际热点、rank 差异及小改动候选待测量；候选进入修改阶段前需重新核对当时 upstream main 和相邻 issue/PR。
+72GB SM120 上该 SHA 的可启动 serving 信封（mf 或 Engram host-table）尚未在本路线测过。A/B/C/D 热点未知。候选进入修改阶段前需重新核对当时 upstream main 和相邻 issue/PR。
 
 ## 下一步
 
-执行 [EXP-0001 冻结计划](experiments/EXP-0001/task.yaml)。环境与代码身份随采集记录；仅操作本路线已授权资源。
+开新 EXP 才能改 `mem_fraction_static` 或 Engram placement；不要在 EXP-0001 上补跑。
 
 ## 实验表
 
 | 编号 | 终态 | 一句话结论 | 记录 |
 | --- | --- | --- | --- |
-| EXP-0001 | — | 计划已发布，尚无执行结果 | [task](experiments/EXP-0001/task.yaml) |
+| EXP-0001 | invalid | 冻结 mf=0.80 被原生 KV 地板拒绝（min 0.8731） | [result](experiments/EXP-0001/result.md) |

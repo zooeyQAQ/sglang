@@ -1,0 +1,14 @@
+# hashed excerpt from /data/sgl_pr/runs/perf/EXP-0001/serve/serve.log
+# full log sha256 d63fc83b1abb6235e7068a96a8e4e2ab66cd578363fed92668f97d384c60ead0
+
+[2026-10-28 04:03:32] Auto-detected DSV4 routed-expert layout: is_fp4_experts=True
+[2026-10-28 04:03:32] Breakable CUDA graph is incompatible with DeepSeek-V4 (heavy capture-pool memory pressure); disabling prefill CUDA graph.
+[2026-10-28 04:03:32] Use dsv4 attention backend for DeepseekV4ForCausalLM, setting page_size to 256.
+[2026-10-28 04:03:32] Use flashinfer_mxfp4 as MoE runner backend for DeepseekV4ForCausalLM.
+[2026-10-28 04:03:32] Setting KV cache dtype to fp8_e4m3 for DeepseekV4ForCausalLM.
+[2026-10-28 04:03:32] DeepSeek-V4.1 Engram tables: EngramConfig(placement='gpu', replication='none', lookup='auto')
+[2026-10-28 04:03:32] DeepSeek-V4.1 decoder SWA bounded replay resolved to True
+
+ValueError: Loaded weights leave no GPU memory for the KV cache under --mem-fraction-static=0.8. Raise --mem-fraction-static above 0.874 (minimum viable = 1 - available/pre = 0.8731). If using speculative decoding, draft weights are now counted.
+
+[2026-10-28 04:05:27] Received sigquit from a child process. It usually means the child failed.
