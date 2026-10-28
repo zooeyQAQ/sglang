@@ -1,0 +1,46 @@
+protocol_version: v0.6
+route: perf
+experiment_id: EXP-0002
+objective: "测量 DeepSeek-V4.1-Flash 在 8×SM120、固定 main 提交下的 TP8 基线（Engram n-gram 在 CPU host table，decode CUDA graph 开，DSpark 关），取得分阶段、多 rank 的 profiler 证据，用于筛选改动小的优化点。"
+hypothesis: "实际 serving 路径中可能存在可消除的拷贝、同步或重复准备开销；若关键路径主要由现有高效计算或必要通信占据，且没有暴露的冗余，则不支持优先做此类框架小优化。"
+code:
+  repo: zooeyQAQ/sglang
+  branch: dev/perf
+  start_commit: "faa56e2b5c5c5dee60eb5dd7b6251944a21a6104"
+  scope: "不修改被测生产代码或测试代码，不增加 monkeypatch、运行时 hook 或依赖 overlay。已有 benchmark、profiler 和分析工具可直接使用；辅助脚本如需新写，必须在相应正式 run 前提交并记录固定来源。"
+baseline:
+  reference: "none：本信封首次基线。对照 EXP-0001 仅说明冻结 mf=0.80 + Engram GPU 无法启动，不把 EXP-0001 当作性能数字。所有 case 使用上述同一 SHA。"
+workload:
+  config:
+    machine: "用户已授权的主 PRO5000 机器，仅容器 zooey_sglang0_5_22_dsv41_8005 的 GPU 0-7；主机实际身份写入结果。不操作 166:8004 或 156。"
+    worktree: /data/sgl_pr/worktrees/perf
+    pythonpath: /data/sgl_pr/worktrees/perf/python
+    python: /opt/sglang/bin/python3
+    model: /data1/models/DeepSeek-V4.1-Flash
+    endpoint: "本实验新建的本机 Python serving /generate；默认绑定 127.0.0.1:30000。若端口已占用，选另一未占用本机端口并记录，不停止占用者。"
+    deployment: "PP1/TP8/EP4，CP=1，无 DP attention，无 DSpark/MTP/PD/HiCache/offload。mem_fraction_static=0.75，page_size=256，chunked_prefill_size=8192，max_running_requests=32，swa-prefix-tails=0，language-model-only。Engram n-gram 在 CPU：SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1，LAYOUT=per_rank。SM120：SGLANG_FP8_PAGED_MQA_LOGITS_TORCH=0，SGLANG_OPT_USE_TILELANG_INDEXER=0，SGLANG_SM120_FLASHMLA_BACKEND=flashinfer。本 SHA 无 HOST_TABLE_PIN / DROP_PAGE_CACHE 字段；cudaHostRegister 始终 pin。SGLANG_ALLOW_DSV41_PP=1 但不设 pp_size。"
+    graphs_and_backends: "decode CUDA graph 开（--cuda-graph-max-bs-decode 32）；prefill CUDA graph 关。attention-backend dsv4，moe-runner-backend flashinfer_mxfp4，fp8-gemm-backend flashinfer_cutlass，kv-cache-dtype fp8_e4m3。不临场改这些开关来补救。"
+    cache: "禁用 radix/prefix cache；计时轮次之间确保无在途请求。"
+    client: "该 SHA 的 python -m sglang.benchmark.serving，backend=sglang，dataset=random，random_range_ratio=0，seed=42，temperature=0，ignore_eos=true，streaming=true，request_rate=inf；保存实际 token 数和逐请求数据。每轮保持相同生成规则。"
+  cases:
+    - {id: A, input_tokens: 8192, output_tokens: 1, concurrency: 1, timing_requests: 8, warmup_requests_per_repeat: 2}
+    - {id: B, input_tokens: 20480, output_tokens: 1, concurrency: 1, timing_requests: 4, warmup_requests_per_repeat: 2}
+    - {id: C, input_tokens: 2048, output_tokens: 256, concurrency: 1, timing_requests: 8, warmup_requests_per_repeat: 2}
+    - {id: D, input_tokens: 2048, output_tokens: 256, concurrency: 8, timing_requests: 32, warmup_requests_per_repeat: 16}
+  repeats: "各 case 先做 3 轮独立的无 profiler 计时，按 A/B/C/D 顺序，每轮采用表中同并发 warmup。若某 case 的三轮输出吞吐（C/D 另查 TPOT p50）的极差/中位数 >10%，仅允许原条件再补 2 轮；仍 >10% 则标记该 case 噪声未收敛。每 case 另做 1 次 profiler 采集，不计入性能数字。"
+procedure:
+  - "人已授权按 8004 TP8 信封（关 DSpark、Engram host table、decode CUDA graph 开）重跑基线。计划提交 GitHub 后直接执行。启动时一次性记录 SHA、clean diff、import/构建来源、有效 server args 与环境。不另开可行性 EXP。"
+  - "使用固定 SHA 自带客户端做未插桩计时；报告 TTFT、TPOT/ITL、输出 token/s、请求数、实际长度和三轮范围。"
+  - "计时后另行开启 CPU+GPU profiler：A/B 完整 prefill（B 覆盖全部 chunk）；C/D 至少连续 10 个稳态 decode forward，排除首次 prefill、graph capture 和服务启动；D 标明实际 batch size。采集前同形状预热至少 10 个相关 forward。"
+  - "保留全部 8 个 TP rank 的原始 trace。优先用该 SHA 原生 profiler 控制。不能用默认 4090/1 或 1/2048 替代本轮负载。"
+  - "trace 缺阶段/GPU events 仅允许同负载重采 1 次；仍无效则停止对应 case。归因不足标 unknown。"
+  - "按 rank 输出 kernel/source、overlap opportunity、fusion pattern 三表。证据写入 /data/sgl_pr/runs/perf/EXP-0002/<case>/<run>/，不得覆盖。plan_commit 为运行前 labbook 完整提交。仅清理本实验进程。"
+acceptance:
+  - "A/B/C/D 均具备至少 3 轮有效、无 profiler 干扰的基线计时和可恢复的原始请求记录；按噪声规则补测后仍波动 >10% 的必需 case，整体为 inconclusive。"
+  - "每 case 有本次生成的有效 profiler 证据：8 个 rank 均有 GPU events，A/B 覆盖所需 prefill，C/D 覆盖至少 10 个完整稳态 decode forward。"
+  - "完成三表及关键路径/不确定项报告。pass 表示证据满足采集合同，不表示已经加速。"
+stop_conditions:
+  - "资源被其他路线占用、导入 live 树、代码/辅助脚本在对应 run 中变化、请求错误导致计时口径失效，立即停止相关测量；不得停止其他路线服务。"
+  - "阻碍测量的缺失 API/ABI、OOM、崩溃、卡死或 profiler 不兼容，记录实际阻塞并停止；不得临场改代码、装包、切 graph/backend、减小既定负载或更换 SHA。"
+  - "服务启动 30 分钟仍未 ready，或单轮测量连续 10 分钟没有请求/step 进展，保留日志并停止本实验服务。serve 进程在 ready 前退出则立即停止，不等满 30 分钟。"
+  - "仅允许预定的噪声补测和 trace 重采。"

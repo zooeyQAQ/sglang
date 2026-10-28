@@ -16,7 +16,7 @@ EXP-0001 **invalid**。冻结 `mem_fraction_static=0.80` 在该 SHA 原生 Engra
 
 ## 下一步
 
-开新 EXP 才能改 `mem_fraction_static` 或 Engram placement；不要在 EXP-0001 上补跑。
+执行 [EXP-0002](experiments/EXP-0002/task.yaml)：TP8×EP4、Engram host table、decode CUDA graph、无 DSpark。
 
 ## 实验表
 
