@@ -1,0 +1,14 @@
+# excerpt /data/sgl_pr/runs/perf/EXP-0002/serve/serve.log
+# sha256 4069695b4327799cd11bc776d086b4f0c5488ab7edecf1b0b1c5e8b17c8c02ac
+
+[2026-10-28 05:19:52] SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE, SGLANG_DSV41_ENGRAM_HOST_TABLE_LAYOUT deprecated; use --engram-config '{"placement": "cpu", "replication": "none", "lookup": "auto"}' instead.
+[2026-10-28 05:19:52] DeepSeek-V4.1 Engram tables: EngramConfig(placement='cpu', replication='none', lookup='auto')
+
+dsv4_attn_backend: flashmla
+cuda_graph decode backend=full max_bs=32
+
+  File ".../sglang/kernels/ops/attention/flash_mla_interface.py", line 15, in <module>
+    import flash_mla
+ModuleNotFoundError: No module named 'flash_mla'
+
+[2026-10-28 05:33:58] Received sigquit from a child process.

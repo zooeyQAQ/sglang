@@ -8,18 +8,20 @@
 
 ## 当前结论
 
-EXP-0001 **invalid**。冻结 `mem_fraction_static=0.80` 在该 SHA 原生 Engram GPU placement 下无法为 KV 留出空间（运行时 min viable 0.8731）。未改 mf、未开 host table，无计时与 profiler 证据。
+EXP-0001 **invalid**（冻结 mf=0.80 + Engram GPU，KV 地板）。
+EXP-0002 **invalid**（host table / CPU Engram 越过 KV，随后 `dsv4_attn_backend=flashmla` 需要镜像没有的 `flash_mla` 包）。无计时与 profiler 证据。
 
 ## 未解决问题
 
-72GB SM120 上该 SHA 的可启动 serving 信封（mf 或 Engram host-table）尚未在本路线测过。A/B/C/D 热点未知。候选进入修改阶段前需重新核对当时 upstream main 和相邻 issue/PR。
+本 0.5.22 镜像缺少 `sgl-flash-mla`。当前 main 的 dsv4 路径在 SM120 上默认 `flashmla` 并硬导入该模块。A/B/C/D 热点未知。
 
 ## 下一步
 
-执行 [EXP-0002](experiments/EXP-0002/task.yaml)：TP8×EP4、Engram host table、decode CUDA graph、无 DSpark。
+需要带 `sgl-flash-mla` 的镜像/wheel，或改用仍走 FlashInfer、不导入 `flash_mla` 的代码基点。不要在 EXP-0002 上装包补跑。
 
 ## 实验表
 
 | 编号 | 终态 | 一句话结论 | 记录 |
 | --- | --- | --- | --- |
 | EXP-0001 | invalid | 冻结 mf=0.80 被原生 KV 地板拒绝（min 0.8731） | [result](experiments/EXP-0001/result.md) |
+| EXP-0002 | invalid | host table 越过 KV 后缺 `flash_mla` 模块 | [result](experiments/EXP-0002/result.md) |
